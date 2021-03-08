@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <!--The viewport meta tag is used to improve the presentation and behavior of the samples
+      on iOS devices-->
+    <meta name="viewport" content="initial-scale=1, maximum-scale=1,user-scalable=no">
+    <title>Prueba API ICGB</title>
+    <link rel="stylesheet" href="http://js.arcgis.com/3.8/js/dojo/dijit/themes/claro/claro.css">
+    <link rel="stylesheet" href="https://js.arcgis.com/3.35/esri/css/esri.css">
+    <link rel="stylesheet" href="css/layout.css"/>
+    <!--Configuración del Modulo dijo-->
+    <script>var dojoConfig = { parseOnLoad: true };</script>
+    <script src="https://js.arcgis.com/3.35/"></script>
+    <script>
+    var map;
+    var tb;
+    require([
+      "esri/map",                                 //Class: Map
+      "esri/geometry/Extent",                     //Class: Extent
+      "esri/layers/ArcGISDynamicMapServiceLayer", //Class: ArcGISDynamicMapServiceLayer
+    //Widgets
+      "esri/dijit/BasemapGallery",                //Clase: BasemapGallery
+      "esri/dijit/Legend",                        //Class: Legend
+      "esri/dijit/Scalebar",                      //Class: Scalebar
+      "esri/dijit/Search",                        //Class: Search
+      "esri/dijit/OverviewMap",                   //Class: OverViewMap
+      "esri/dijit/HomeButton",                    //Class: HomeButton
+    //Consultas
+      "esri/layers/FeatureLayer",                 //Class: FeatureLayer
+      "esri/toolbars/draw",                       //Class: Draw
+      "esri/Color",                               //Class: Color
+      "esri/graphic",                             //Class: Graphic
+      "esri/tasks/query",                         //Class: Query
+      "esri/symbols/SimpleFillSymbol",            //Class: SimpleFillSymbol
+      "esri/symbols/SimpleLineSymbol",            //Class: SimpleLineSymbol
+      "esri/symbols/SimpleMarkerSymbol",          //Class: SimpleMarkerSymbol    
+      "esri/graphicsUtils",                       //Object: esri/graphicsUtils
+      "esri/geometry/webMercatorUtils",           //Object: esri/geometry/webMercatorUtils
+      "dgrid/OnDemandGrid",                       //dgrid: OnDemandGrid
+      "dgrid/Selection",                          //dgrid: Selection
+    //popup
+      "esri/dijit/PopupTemplate",                 //Class: PopupTemplate
+    //dojo
+      "dojo/store/Memory",                        //dojo: Memory
+      "dojo/date/locale",                         //dojo: Locale
+      "dojo/_base/declare",                       //dojo: Declare
+      "dojo/_base/array",                         //dojo: Array
+      "dojo/ready",                               //dojo: Ready
+      "dojo/parser",                              //dojo: Parser
+      "dojo/on",                                  //dojo:on
+      "dojo/dom",                                 //dojo: dom
+    //dijit
+      "dijit/form/ComboBox",                      //dijit:ComboBox
+      "dijit/layout/TabContainer",                //dijit:TabContainer
+      "dijit/layout/ContentPane",                 //dijit:ContentPane
+      "dijit/layout/BorderContainer",             //dijit: BorderContainer
+      "dojo/domReady!"],                          //dojo: domReady!
+        function(
+          Map, Extent, ArcGISDynamicMapServiceLayer, BasemapGallery, Legend, Scalebar, Search, OverviewMap,HomeButton,
+          FeatureLayer, Draw, Color, Graphic, Query,
+          SimpleFillSymbol, SimpleLineSymbol,SimpleMarkerSymbol,graphicsUtils, webMercatorUtils,
+          Grid, Selection, PopupTemplate,           
+          Memory, locale, declare, array, ready, parser, on, dom, ComboBox) {
+    /*
+    CONSULTA 1.*/
+        on(dojo.byId("pintaYQuery"),"click",fPintaYQuery);
+      //Paso 10.2 Herramienta de Dibujo.
+        function fPintaYQuery(){
+          tb= new Draw(map);
+          tb.on("draw-complete",addToMap);
+          tb.activate(Draw.POLYGON);
+        }
+      //Paso 10.3 Visualizar el polígono en el mapa.
+        function addToMap(evt) {
+          var geometryInput = evt.geometry;
+          var tbDrawSymbol = new SimpleFillSymbol(SimpleFillSymbol.STYLE_SOLID, 
+            new SimpleLineSymbol(
+              SimpleLineSymbol.STYLE_DASHDOT, 
+              new Color([184, 0, 0]), 2), new Color([93, 78, 96, 0.2]));
+          map.graphics.clear();
+          var graphicPolygon = new Graphic(geometryInput, tbDrawSymbol);
+          map.graphics.add(graphicPolygon);
+          selectCities(geometryInput);
+        }  
+      //Paso 10.4 Seleccionar las Ciudades.    
+        function selectCities(geometryInput) {
+          var symbolSelected = new SimpleMarkerSymbol({
+            "type": "esriSMS",
+            "style": "esriSMSDiamond",
+            "color": [255, 0, 0],
+            "size": 8,
+            "outline": {"color": [0, 0, 0, 214],
+                    "width": 1}
+          });
+          lyrCities.setSelectionSymbol(symbolSelected);
+          var queryCities = new Query();
+          queryCities.geometry = geometryInput;
+          lyrCities.on("selection-complete",populateGrid);
+          lyrCities.selectFeatures(queryCities,FeatureLayer.SELECTION_NEW)
+          lyrCities.queryFeatures(queryCities, function(resultCities) {
+            var extentCities = esri.graphicsExtent(resultCities.features);
+              map.setExtent(extentCities,true);
+          });
+        }
+      //Paso 10.6 Visualizar las entidades seleccionadas en el grid     
+        function populateGrid(results) {               
+          var gridData;
+          dataCities = array.map(results.features, function (feature) {
+             return {"st": feature.attributes[outFieldsCities[0]],
+                      "areaname": feature.attributes[outFieldsCities[1]],
+                      "pop2000": feature.attributes[outFieldsCities[2]],
+                    }
+           });
+          var memStore = new Memory({
+            data: dataCities
+          });
+          gridCities.set("store", memStore);
+        }
+      //Paso 10.5 Crear un Grid para los Resultados
+        var gridCities = new (declare([Grid, Selection]))({
+                bufferRows: Infinity,
+                columns: {
+                  st: "Estado",
+                  areaname: "Ciudad",
+                  pop2000: "Población"
+                }
+        }, "gridSelection");
+    /*
+    LIMPIAR SELECCIÓN CONSULTA 1 (Paso 11)*/
+        on(dojo.byId("OffpintaYQuery"),"click",function OffpintaYQuery(){
+      //Paso 11. Limpiar Selección
+            map.graphics.clear();
+            lyrCities.clearSelection();
+            tb.deactivate(Draw.POLYGON);
+        });
+    /*
+    CONSULTA 2. (Paso 12)*/
+        on(dojo.byId("progButtonNode"),"click",function fQueryEstados(){
+      //Paso 12. Seleccionar Estados
+          var sbState= new SimpleLineSymbol()
+            sbState.setWidth(3);
+            sbState.setColor(new Color ([255,0,0]));
+          lyrState.setSelectionSymbol(sbState)
+          var queryState = new Query();
+          queryState.where = `state_name = '${dojo.byId("dtb").value}'`;
+          lyrState.selectFeatures(queryState, FeatureLayer.SELECTION_NEW)
+          lyrState.queryFeatures(queryState, function(result) {
+              var extent = esri.graphicsExtent(result.features);
+              map.setExtent(extent,true);
+              });
+            }); 
+      //Paso 13. Búsqueda de estados desplegable.
+          var StateStore=new Memory ({data: [
+              {name:"Alabama"},{name:"Alaska"}, {name:"Arizona"},{name:"Arkansas"},{name:"California"},{name:"Colorado"},{name:"Connecticut"},
+              {name:"Delaware"},{name:"District of Columbia"},{name:"Florida"},{name:"Georgia"},{name:"Hawaii"},{name:"Idaho"},
+              {name:"Illinois"},{name:"Indiana"},{name:"Iowa"},{name:"Kansas"},{name:"Kentucky"},{name:"Louisiana"},{name:"Maryland"},
+              {name:"Massachusetts"},{name:"Michigan"},{name:"Minnesota"},{name:"Mississippi"},{name:"Missouri"},{name:"Missouri"},
+              {name:"Montana"},{name:"Nebraska"},{name:"Nevada"},{name:"New Hampshire"},{name:"New Jersey"},{name:"Montana"},
+              {name:"New Mexico"},{name:"New York"},{name:"North Carolina"},{name:"North Dakota"},{name:"Ohio"},{name:"Oklahoma"},
+              {name:"Oregon"},{name:"Pennsylvania"},{name:"Rhode Island"},{name:"South Carolina"},{name:"South Dakota"},{name:"Tennessee"},
+              {name:"Texas"},{name:"Utah"},{name:"Vermont"},{name:"Virginia"},{name:"Washington"},{name:"West Virginia"},
+              {name:"Wisconsin"},{name:"Wyoming"}]
+          })
+          var comboBox = new ComboBox({
+              id: "dtb",
+              name: "state",
+              value: "Washington",
+              store: StateStore,
+              autoComplete: true,
+              searchAttr: "name"
+            }, "dtb");
+    /*
+    LIMPIAR SELECCIÓN CONSULTA 2 (Paso 14)*/ 
+        on(dojo.byId("OffprogButtonNode"),"click",function OffprogButtonNode(){
+      //Paso 14. Limpiar Selección de Estado
+            map.graphics.clear();
+            map.setExtent(extentInitial);
+            lyrState.clearSelection();
+        });
+    /*
+    TAREA IDENTIFY*/
+      //Paso 15.2  Añadir el Servicio de Mapa para Tarea Identify
+        var templatePopUp= new PopupTemplate ({
+                  title: "Nombre: {STATE_NAME}",
+                  description: "Población: {POP2000} habitantes. <br> Densidad de Población: {POP00_SQMI} Personas/mi2 <br> Área: {st_area(shape)} ",   
+            });
+    /*
+    CONSTRUCCIÓN DEL MAPA*/ 
+      //Paso 2: Extensión Inicial
+        var extentInitial = new Extent ({
+            "xmin":-20869639.11698334,
+            "ymin":2230554.0652531795,
+            "xmax":-4276077.520615409,
+            "ymax":11251346.395354142,
+            "spatialReference":{
+                "wkid":102100
+            }
+        });
+        map = new Map("map", {
+          basemap: "topo",
+          extent: extentInitial,
+          sliderStyle: "small"
+        });
+    /*
+    SERVICIOS DEL MAPA*/
+      //Paso 3. Añadir el Servicio de Mapa
+        var lyrUSA = new ArcGISDynamicMapServiceLayer ("http://sampleserver6.arcgisonline.com/arcgis/rest/services/USA/MapServer/", {
+            opacity: 0.5
+        });
+        lyrUSA.setVisibleLayers([1, 3]);
+      //Paso 10.1. Añadir el Servicio de Mapa para la Consulta 1
+        var URLCitie = "http://sampleserver6.arcgisonline.com/arcgis/rest/services/USA/MapServer/0";
+        var outFieldsCities = ["st", "areaname", "pop2000"];
+        var lyrCities = new FeatureLayer (URLCitie,{
+            outFields: outFieldsCities
+        });
+      //Paso 15.1.  Añadir el Servicio de Mapa un FeatureLayer para Tarea Identify
+        var URLState = "http://sampleserver6.arcgisonline.com/arcgis/rest/services/USA/MapServer/2";
+        var lyrState = new FeatureLayer (URLState, {
+            opacity: 0.7,
+            outFields: ["*"],
+            infoTemplate: templatePopUp
+        });
+    /*
+    WIDGETS*/
+          map.on("load",function(evt){
+          map.resize();
+          map.reposition();
+          map.addLayers([lyrUSA, lyrCities, lyrState]);
+          map.on("mouse-move", showCoordinates);
+          map.on("mouse-drag", showCoordinates)
+      //Paso 4. Añadir el widget BaseMapGallery
+          var basemapGallery = new BasemapGallery ({
+              showArcGISBasemaps: true,
+              map: map
+          }, "basemapGallery");
+          basemapGallery.startup ();
+      //Paso 5. Añadir el widget de Leyenda
+          var dijitLegend= new Legend ({
+              map: map,
+              arrangement: Legend.ALIGN_LEFT
+              }, "legendDiv");
+          dijitLegend.startup();
+      //Paso 6.  Añadir el widget de Escala.
+          var dijitScalebar= new Scalebar ({
+              map: map,
+              scalebarUnit: "dual",
+              attachTo: "bottom-center"
+          });
+      //Paso 7.  Añadir el widget de Search.
+          var searchWidget = new Search({
+              map: map,
+              enableButtonMode: true
+          }, "search");
+          searchWidget.startup();
+      //Paso 8.  Añadir el widget Overview.
+          var overviewWidget= new OverviewMap({
+                map: map,
+                visible:true,
+                attachTo: "bottom-left",
+                expandFactor: 1,
+                color: "#012F46",
+                opacity: .40,
+                height: 120,
+                width: 140,
+            },"overview");
+            overviewWidget.startup();
+      //Paso 9.  Añadir el widget HomeButton.
+          var home = new HomeButton({
+            map: map
+          }, "HomeButton");
+          home.startup();
+      //Paso 16 Coordenadas del Mapa
+          function showCoordinates(evt) {
+            var CoordMap = webMercatorUtils.webMercatorToGeographic(evt.mapPoint);
+            dom.byId("CoordenadasMapa").innerHTML = "Latitud: "+ CoordMap.y.toFixed(3)+ ", Longitud: "+CoordMap.x.toFixed(3);
+          };
+        });
+      });
+
+    </script>
+  </head>
+  <body class="claro">
+    <div id="mainWindow"
+         data-dojo-type="dijit.layout.BorderContainer"
+         data-dojo-props="design:'headline', gutters:false"
+         style="width:100%; height:100%;">
+      <!--Banner-->
+      <div id="header"
+           data-dojo-type="dijit.layout.ContentPane" data-dojo-props="region:'top'">
+      <!--Paso 1: Se agrego el Nombre: Isabel Cristina Guillén Barres-->
+        Master GIS ESRI España
+       <div id="subheader">Isabel Cristina Guillén Barres</div>     
+      </div>
+      <div data-dojo-type="dijit.layout.ContentPane" id="leftPane" data-dojo-props="region:'left'">
+        <div data-dojo-type="dijit.layout.TabContainer">
+          <!--Leyenda-->
+          <div data-dojo-type="dijit.layout.ContentPane" data-dojo-props="title:'Leyenda', selected:true">
+            <div id="legendDiv"></div>
+          </div>
+          <!--Tareas-->
+          <div data-dojo-type="dijit.layout.ContentPane" data-dojo-props="title:'Tareas'" >
+            Operaciones
+            <br>
+            <button id="pintaYQuery" class= "button" type="button">Seleccionar Ciudades</button>
+            <!--Paso 11. Botón Limpiar Selección-->
+            <button id="OffpintaYQuery" class= "button" type="button">Limpiar</button>
+            <p></p>
+            <!--Paso 10.5 Se agrego el id para el Grid-->
+            <div id="gridSelection"></div>
+          </div>
+        </div>
+      </div>
+      <!--Mapa-->
+      <div id="map" data-dojo-type="dijit.layout.ContentPane" data-dojo-props="region:'center'">
+        <!--Paso 5.  Añadir un widget BaseMapGallery-->
+        <div style="position:absolute; right:20px; top:10px; z-Index:999;">
+          <div data-dojo-type="dijit/TitlePane"
+               data-dojo-props="title:'Switch Basemap', closable:false, open:false">
+              <div data-dojo-type="dijit/layout/ContentPane" style="width:380px; height:280px; overflow:auto;">
+                  <div id="basemapGallery"></div>
+              </div>
+          </div>
+        </div>
+        <!--Paso 7.  Añadir un widget de Search.-->
+        <div id="search"></div>
+        <!--Paso 8. Añadir un widget Overview-->
+        <div id="overview"></div> 
+        <!--Paso 9.  Añadir un widget HomeButton-->
+        <div id="HomeButton"></div>
+      </div>
+      <!--Busqueda Estados-->
+      <div id="footer" data-dojo-type="dijit.layout.ContentPane" data-dojo-props="region:'bottom'">
+        <!--Paso 13. Remplazo del textbox por ComboBox, para la Busqueda Desplegable-->
+        <label for="dtb">Introduzca el nombre de un estado:</label> <input id="dtb" data-dojo-type="dijit/form/ComboBox"/>
+        <button id="progButtonNode" type="button">Ir al estado</button>
+        <!--Paso 14. Botón Limpiar Selección-->
+        <button id="OffprogButtonNode" type="button">Limpiar selección de Estado</button>
+        <!--Paso 16. Coordenadas del Mapa-->
+        <div id="CoordenadasMapa"></div> 
+      </div>
+    </div>
+  </body>
+
+</html>
